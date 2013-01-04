@@ -2,10 +2,6 @@ extern mod std;
 
 use io::{ReaderUtil,WriterUtil};
 
-// pub struct Program {
-//   commands: ~[~str]
-// }
-
 /**
  * The AST
  */
