@@ -1,0 +1,11 @@
+extern mod std;
+#[crate_type = "bin"]
+#[link(name="ixl")]
+
+mod ixl {
+  mod parser;
+}
+
+fn main() {
+  io::println("hello, world");
+}
