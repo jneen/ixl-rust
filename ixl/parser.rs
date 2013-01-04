@@ -288,19 +288,19 @@ impl Scanner {
 }
 
 pure fn is_space(ch: char) -> bool {
-  match ch { ' '|'\t' => true, _ => false }
+  " \t".contains_char(ch)
 }
 
 pure fn is_termspace(ch: char) -> bool {
-  is_space(ch) || match ch { '\r'|'\n'|';' => true, _ => false }
+  is_space(ch) || "\n;\r".contains_char(ch)
 }
 
 pure fn is_word_terminator(ch: char) -> bool {
-  is_termspace(ch) || match ch { '#'|']'|')'|'|' => true, _ => false }
+  is_termspace(ch) || "#])|".contains_char(ch)
 }
 
 fn with_scanner<T>(s: &str, yield: fn(Scanner) -> T) -> T {
-  do io::with_str_reader(s) |reader| { yield(Scanner(reader)) }
+  io::with_str_reader(s, |r| yield(Scanner(r)))
 }
 
 #[test]
@@ -392,14 +392,14 @@ fn test_command() {
   let c1 = with_scanner(~"foo -a", |s| s.parse_command());
   assert(match *c1.call { String(ref x) => *x == ~"foo", _ => false });
   assert(match c1.target { None => true, _ => false });
-  assert(vec::len(c1.flags) == 1);
+  assert(c1.flags.len() == 1);
   assert(c1.flags[0].name == ~"a");
   assert(match c1.flags[0].argument { None => true, _ => false });
 
   let c2 = with_scanner(~"@foo bar --why 1 --zee .baz", |s| s.parse_command());
   assert(match *c2.call { String(ref x) => *x == ~"bar", _ => false });
   assert(match c2.target { Some(@String(ref x)) => *x == ~"foo", _ => false });
-  assert(vec::len(c2.flags) == 2);
+  assert(c2.flags.len() == 2);
 
   let c3 = with_scanner(~"foo | bar", |s| s.parse_command());
   match c3.pipe {
@@ -415,7 +415,7 @@ fn test_block() {
   let b1 = with_scanner(~"[.]", |s| s.parse_block());
   match b1 {
     Block(ref commands) => {
-      assert(vec::len(*commands) == 1);
+      assert(commands.len() == 1);
       assert(match *commands[0].call {
         Variable(ref x) => *x == ~"", _ => false
       });
