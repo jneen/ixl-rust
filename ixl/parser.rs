@@ -7,8 +7,8 @@ use either::{Left,Right,Either};
  * The AST
  */
 pub enum Term {
-  Block(~[@Command]),
-  Subst(~[@Command]),
+  Block(@[@Command]),
+  Subst(@[@Command]),
   Variable(~str),
   String(~str),
 }
@@ -20,12 +20,12 @@ pub enum Component {
 
 pub struct Command {
   target: Option<Term>,
-  components: ~[@Component],
+  components: @[@Component],
   pipe: Option<@Command>
 }
 
 pub struct Program {
-  commands: ~[@Command]
+  commands: @[@Command]
 }
 
 /**
@@ -122,8 +122,8 @@ impl Scanner {
     Subst(self.parse_commands_until(')'))
   }
 
-  fn parse_commands_until(&self, end: char) -> ~[@Command] {
-    do vec::build |push| {
+  fn parse_commands_until(&self, end: char) -> @[@Command] {
+    do at_vec::build |push| {
       while !self.eof() {
         self.parse_termspaces();
         if self.cursor == end {
@@ -214,7 +214,7 @@ impl Scanner {
     self.parse_spaces();
 
     // look for flags
-    let components = do vec::build |push| {
+    let components = do at_vec::build |push| {
       while !self.eof() {
         if is_word_terminator(self.cursor) { break; }
 
@@ -249,7 +249,7 @@ impl Scanner {
   }
 
   fn parse(&self) -> Program {
-    let commands = do vec::build |push| {
+    let commands = do at_vec::build |push| {
       while !self.eof() {
         self.parse_termspaces();
         push(@self.parse_command());
