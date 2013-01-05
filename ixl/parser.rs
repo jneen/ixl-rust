@@ -1,6 +1,7 @@
 extern mod std;
 
 use io::{ReaderUtil,WriterUtil};
+use either::{Left,Right,Either};
 
 /**
  * The AST
@@ -12,15 +13,9 @@ pub enum Term {
   String(~str),
 }
 
-pub struct Flag {
-  name: ~str,
-  argument: Option<@Term>,
-}
-
 pub struct Command {
   target: Option<@Term>,
-  call: @Term,
-  flags: ~[@Flag],
+  components: ~[Either<~str, @Term>],
   pipe: Option<@Command>
 }
 
@@ -194,30 +189,6 @@ impl Scanner {
     }
   }
 
-  fn parse_flag(&self) -> Flag {
-    if self.cursor != '-' { self.error("expected flag"); }
-
-    self.bump();
-    // --double-dashes
-    if self.cursor == '-' { self.bump(); }
-
-    let name = self.parse_string();
-    self.parse_spaces();
-
-    let argument = if (
-      !self.eof()
-      && self.cursor != '-'
-      && !is_word_terminator(self.cursor)
-    ) {
-      Some(@self.parse_term())
-    }
-    else {
-      None
-    };
-
-    Flag { name: name, argument: argument }
-  }
-
   fn parse_command(&self) -> Command {
     let target = if self.cursor == '@' {
       self.bump();
@@ -231,21 +202,17 @@ impl Scanner {
 
     self.parse_spaces();
 
-    let call = @self.parse_term();
-
-    self.parse_spaces();
-
     // look for flags
-    let flags = do vec::build |push| {
+    let components = do vec::build |push| {
       while !self.eof() {
         if is_word_terminator(self.cursor) { break; }
 
         match self.cursor {
           '-' => {
-            push(@self.parse_flag());
-          }
-
-          _ => { self.error("unflagged command argument"); }
+            self.bump();
+            if self.cursor == '-' { self.bump(); }
+            push(Left(self.parse_string())); }
+          _ => { push(Right(@self.parse_term())); }
         }
 
         self.parse_spaces();
@@ -265,8 +232,7 @@ impl Scanner {
 
     Command {
       target: target,
-      call: call,
-      flags: flags,
+      components: components,
       pipe: pipe,
     }
   }
@@ -356,51 +322,45 @@ fn test_dots() {
 }
 
 #[test]
-fn test_flag() {
-  do with_scanner(~"-a -b barg --cee -d") |scanner| {
-    let f1 = scanner.parse_flag();
-    assert(f1.name == ~"a");
-    assert(match f1.argument { None => true, _ => false });
-
-    scanner.parse_spaces();
-
-    let f2 = scanner.parse_flag();
-    assert(f2.name == ~"b");
-    assert(match f2.argument {
-      Some(@String(ref x)) => *x == ~"barg",
-      _ => false
-    });
-
-    scanner.parse_spaces();
-
-    let f3 = scanner.parse_flag();
-    assert(f3.name == ~"cee");
-    assert(match f3.argument { None => true, _ => false });
-
-    let f4 = scanner.parse_flag();
-    assert(f4.name == ~"d");
-    assert(match f3.argument { None => true, _ => false });
-  }
-}
-
-#[test]
 fn test_command() {
   let c1 = with_scanner(~"foo -a", |s| s.parse_command());
-  assert(match *c1.call { String(ref x) => *x == ~"foo", _ => false });
   assert(match c1.target { None => true, _ => false });
-  assert(c1.flags.len() == 1);
-  assert(c1.flags[0].name == ~"a");
-  assert(match c1.flags[0].argument { None => true, _ => false });
+  assert(c1.components.len() == 2);
+  assert(match c1.components[0] {
+    Right(@String(ref x)) => *x == ~"foo",
+    _ => false
+  });
 
-  let c2 = with_scanner(~"@foo bar --why 1 --zee .baz", |s| s.parse_command());
-  assert(match *c2.call { String(ref x) => *x == ~"bar", _ => false });
+  assert(match c1.components[1] { Left(ref x) => *x == ~"a", _ => false });
+
+  let c2 = with_scanner(~"@foo bar --why 1 .baz", |s| s.parse_command());
   assert(match c2.target { Some(@String(ref x)) => *x == ~"foo", _ => false });
-  assert(c2.flags.len() == 2);
+  assert(c2.components.len() == 4);
+  assert(match c2.components[0] {
+    Right(@String(ref x)) => *x == ~"bar",
+    _ => false
+  });
+  assert(match c2.components[1] {
+    Left(ref x) => *x == ~"why",
+    _ => false
+  });
+  assert(match c2.components[2] {
+    Right(@String(ref x)) => *x == ~"1",
+    _ => false
+  });
+  assert(match c2.components[3] {
+    Right(@Variable(ref x)) => *x == ~"baz",
+    _ => false
+  });
 
   let c3 = with_scanner(~"foo | bar", |s| s.parse_command());
   match c3.pipe {
     Some(ref bar) => {
-      assert(match *bar.call { String(ref x) => *x == ~"bar", _ => false });
+      assert(bar.components.len() == 1);
+      assert(match bar.components[0] {
+        Right(@String(ref x)) => *x == ~"bar",
+        _ => false
+      });
     }
     _ => { fail }
   }
@@ -408,12 +368,16 @@ fn test_command() {
 
 #[test]
 fn test_block() {
-  let b1 = with_scanner(~"[.]", |s| s.parse_block());
+  let b1 = with_scanner(~"[. .]", |s| s.parse_block());
   match b1 {
     Block(ref commands) => {
       assert(commands.len() == 1);
-      assert(match *commands[0].call {
-        Variable(ref x) => *x == ~"", _ => false
+      assert(commands[0].components.len() == 2);
+      assert(match commands[0].components[0] {
+        Right(@Variable(ref x)) => *x == ~"", _ => false
+      });
+      assert(match commands[0].components[1] {
+        Right(@Variable(ref x)) => *x == ~"", _ => false
       });
     }
     _ => { fail; }
