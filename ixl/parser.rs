@@ -186,7 +186,7 @@ impl Scanner {
 
   fn parse_term(&self) -> Term {
     match self.cursor {
-      '.' => {
+      '$' => {
         self.bump();
         Variable(self.parse_string())
       }
@@ -299,7 +299,7 @@ fn test_strings() {
 
 #[test]
 fn test_terms() {
-  do with_scanner(~".foo bar .") |scanner| {
+  do with_scanner(~"$foo bar $") |scanner| {
     let result1 = scanner.parse_term();
     assert(match result1 {
       Variable(x) => { x == ~"foo" }
@@ -317,7 +317,7 @@ fn test_terms() {
 
 #[test]
 fn test_dots() {
-  do with_scanner(". .") |scanner| {
+  do with_scanner("$ $") |scanner| {
     let result1 = scanner.parse_term();
     assert(match result1 {
       Variable(x) => x == ~"", _ => false
@@ -344,7 +344,7 @@ fn test_command() {
 
   assert(match *c1.components[1] { Flag(ref x) => *x == ~"a", _ => false });
 
-  let c2 = with_scanner(~"@foo bar --why 1 .baz", |s| s.parse_command());
+  let c2 = with_scanner(~"@foo bar --why 1 $baz", |s| s.parse_command());
   assert(match c2.target { Some(@String(ref x)) => *x == ~"foo", _ => false });
   assert(c2.components.len() == 4);
   assert(match *c2.components[0] {
@@ -379,7 +379,7 @@ fn test_command() {
 
 #[test]
 fn test_block() {
-  let b1 = with_scanner(~"[. .]", |s| s.parse_block());
+  let b1 = with_scanner(~"[$ $]", |s| s.parse_block());
   match b1 {
     Block(ref commands) => {
       assert(commands.len() == 1);
