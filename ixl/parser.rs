@@ -13,9 +13,14 @@ pub enum Term {
   String(~str),
 }
 
+pub enum Component {
+  Flag(~str),
+  Argument(@Term)
+}
+
 pub struct Command {
   target: Option<@Term>,
-  components: ~[Either<~str, @Term>],
+  components: ~[@Component],
   pipe: Option<@Command>
 }
 
@@ -217,8 +222,8 @@ impl Scanner {
           '-' => {
             self.bump();
             if self.cursor == '-' { self.bump(); }
-            push(Left(self.parse_string())); }
-          _ => { push(Right(@self.parse_term())); }
+            push(@Flag(self.parse_string())); }
+          _ => { push(@Argument(@self.parse_term())); }
         }
 
         self.parse_spaces();
@@ -332,30 +337,30 @@ fn test_command() {
   let c1 = with_scanner(~"foo -a", |s| s.parse_command());
   assert(match c1.target { None => true, _ => false });
   assert(c1.components.len() == 2);
-  assert(match c1.components[0] {
-    Right(@String(ref x)) => *x == ~"foo",
+  assert(match *c1.components[0] {
+    Argument(@String(ref x)) => *x == ~"foo",
     _ => false
   });
 
-  assert(match c1.components[1] { Left(ref x) => *x == ~"a", _ => false });
+  assert(match *c1.components[1] { Flag(ref x) => *x == ~"a", _ => false });
 
   let c2 = with_scanner(~"@foo bar --why 1 .baz", |s| s.parse_command());
   assert(match c2.target { Some(@String(ref x)) => *x == ~"foo", _ => false });
   assert(c2.components.len() == 4);
-  assert(match c2.components[0] {
-    Right(@String(ref x)) => *x == ~"bar",
+  assert(match *c2.components[0] {
+    Argument(@String(ref x)) => *x == ~"bar",
     _ => false
   });
-  assert(match c2.components[1] {
-    Left(ref x) => *x == ~"why",
+  assert(match *c2.components[1] {
+    Flag(ref x) => *x == ~"why",
     _ => false
   });
-  assert(match c2.components[2] {
-    Right(@String(ref x)) => *x == ~"1",
+  assert(match *c2.components[2] {
+    Argument(@String(ref x)) => *x == ~"1",
     _ => false
   });
-  assert(match c2.components[3] {
-    Right(@Variable(ref x)) => *x == ~"baz",
+  assert(match *c2.components[3] {
+    Argument(@Variable(ref x)) => *x == ~"baz",
     _ => false
   });
 
@@ -363,8 +368,8 @@ fn test_command() {
   match c3.pipe {
     Some(ref bar) => {
       assert(bar.components.len() == 1);
-      assert(match bar.components[0] {
-        Right(@String(ref x)) => *x == ~"bar",
+      assert(match *bar.components[0] {
+        Argument(@String(ref x)) => *x == ~"bar",
         _ => false
       });
     }
@@ -379,11 +384,11 @@ fn test_block() {
     Block(ref commands) => {
       assert(commands.len() == 1);
       assert(commands[0].components.len() == 2);
-      assert(match commands[0].components[0] {
-        Right(@Variable(ref x)) => *x == ~"", _ => false
+      assert(match *commands[0].components[0] {
+        Argument(@Variable(ref x)) => *x == ~"", _ => false
       });
-      assert(match commands[0].components[1] {
-        Right(@Variable(ref x)) => *x == ~"", _ => false
+      assert(match *commands[0].components[1] {
+        Argument(@Variable(ref x)) => *x == ~"", _ => false
       });
     }
     _ => { fail; }
