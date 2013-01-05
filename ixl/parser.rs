@@ -15,11 +15,11 @@ pub enum Term {
 
 pub enum Component {
   Flag(~str),
-  Argument(@Term)
+  Argument(Term)
 }
 
 pub struct Command {
-  target: Option<@Term>,
+  target: Option<Term>,
   components: ~[@Component],
   pipe: Option<@Command>
 }
@@ -203,7 +203,7 @@ impl Scanner {
   fn parse_command(&self) -> Command {
     let target = if self.cursor == '@' {
       self.bump();
-      Some(@self.parse_term())
+      Some(self.parse_term())
     }
     else {
       None
@@ -223,7 +223,7 @@ impl Scanner {
             self.bump();
             if self.cursor == '-' { self.bump(); }
             push(@Flag(self.parse_string())); }
-          _ => { push(@Argument(@self.parse_term())); }
+          _ => { push(@Argument(self.parse_term())); }
         }
 
         self.parse_spaces();
@@ -338,17 +338,17 @@ fn test_command() {
   assert(match c1.target { None => true, _ => false });
   assert(c1.components.len() == 2);
   assert(match *c1.components[0] {
-    Argument(@String(ref x)) => *x == ~"foo",
+    Argument(String(ref x)) => *x == ~"foo",
     _ => false
   });
 
   assert(match *c1.components[1] { Flag(ref x) => *x == ~"a", _ => false });
 
   let c2 = with_scanner(~"@foo bar --why 1 $baz", |s| s.parse_command());
-  assert(match c2.target { Some(@String(ref x)) => *x == ~"foo", _ => false });
+  assert(match c2.target { Some(String(ref x)) => *x == ~"foo", _ => false });
   assert(c2.components.len() == 4);
   assert(match *c2.components[0] {
-    Argument(@String(ref x)) => *x == ~"bar",
+    Argument(String(ref x)) => *x == ~"bar",
     _ => false
   });
   assert(match *c2.components[1] {
@@ -356,11 +356,11 @@ fn test_command() {
     _ => false
   });
   assert(match *c2.components[2] {
-    Argument(@String(ref x)) => *x == ~"1",
+    Argument(String(ref x)) => *x == ~"1",
     _ => false
   });
   assert(match *c2.components[3] {
-    Argument(@Variable(ref x)) => *x == ~"baz",
+    Argument(Variable(ref x)) => *x == ~"baz",
     _ => false
   });
 
@@ -369,7 +369,7 @@ fn test_command() {
     Some(ref bar) => {
       assert(bar.components.len() == 1);
       assert(match *bar.components[0] {
-        Argument(@String(ref x)) => *x == ~"bar",
+        Argument(String(ref x)) => *x == ~"bar",
         _ => false
       });
     }
@@ -385,10 +385,10 @@ fn test_block() {
       assert(commands.len() == 1);
       assert(commands[0].components.len() == 2);
       assert(match *commands[0].components[0] {
-        Argument(@Variable(ref x)) => *x == ~"", _ => false
+        Argument(Variable(ref x)) => *x == ~"", _ => false
       });
       assert(match *commands[0].components[1] {
-        Argument(@Variable(ref x)) => *x == ~"", _ => false
+        Argument(Variable(ref x)) => *x == ~"", _ => false
       });
     }
     _ => { fail; }
