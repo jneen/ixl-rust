@@ -185,6 +185,12 @@ impl Scanner {
         self.bump();
         Variable(self.parse_string())
       }
+      '[' => {
+        self.parse_block()
+      }
+      '(' => {
+        self.parse_subst()
+      }
       _ => { String(self.parse_string()) }
     }
   }
