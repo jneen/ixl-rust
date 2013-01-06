@@ -11,6 +11,7 @@ pub enum Term {
   Subst(@[@Command]),
   Variable(~str),
   String(~str),
+  Interp(@[Term]),
 }
 
 pub enum Component {
@@ -97,6 +98,23 @@ impl Scanner {
     }
   }
 
+  fn consume_escaped(&self, pred: pure fn(char) -> bool) -> ~str {
+    do io::with_str_writer |out| {
+      while !self.eof() && pred(self.cursor) {
+        // TODO: \uXXXX sequences etc.
+        // this just takes the literal char after the escape
+        // and goes with it.
+        if self.cursor == '\\' {
+          self.bump();
+          if self.eof() { self.error("unterminated escape sequence"); }
+        }
+
+        out.write_char(self.cursor);
+        self.bump();
+      };
+    }
+  }
+
   fn error(msg: &str) -> ! {
     fail fmt!("ixl: parse error at line %u:%u: %s", self.line, self.col, msg);
   }
@@ -151,36 +169,132 @@ impl Scanner {
       return self.consume(|x| !is_word_terminator(x));
     }
 
-    self.bump();
-    if self.eof() { self.error("unterminated string"); }
-    let mut braceCount = 1u;
-
     do io::with_str_writer |out| {
-      loop {
-        match self.cursor {
-          '{' => {
-            out.write_char(self.cursor);
-            braceCount += 1u;
-          }
-          '}' => {
-            braceCount -= 1u;
-            if braceCount == 0 { break; }
-            else { out.write_char(self.cursor); }
-          }
-          '\\' => {
-            if self.eof() { self.error("unterminated escape sequence"); }
-            self.bump();
-            out.write_char(self.cursor);
-          }
-          _ => { out.write_char(self.cursor); }
-        }
+      self.braces(|ch| out.write_char(ch));
+    }
+  }
 
-        self.bump();
-        if self.eof() { self.error("unterminated string"); }
+  fn braces(&self, callback: fn(char)) {
+    self.bump(); // consume initial open brace
+    if self.eof() { self.error("unterminated braces"); }
+
+    let mut brace_count = 1u;
+
+    loop {
+      match self.cursor {
+        '{' => {
+          callback(self.cursor);
+          brace_count += 1u;
+        }
+        '}' => {
+          brace_count -= 1u;
+          if brace_count == 0 { break; }
+          else { callback(self.cursor); }
+        }
+        '\\' => {
+          if self.eof() { self.error("unterminated braces"); }
+          self.bump();
+          callback(self.cursor);
+        }
+        _ => { callback(self.cursor); }
       }
 
-      if self.eof() { self.error("unterminated string"); }
       self.bump();
+      if self.eof() { self.error("unterminated braces"); }
+    }
+
+    if self.eof() { self.error("unterminated braces"); }
+    self.bump();
+  }
+
+  fn bareword(&self, callback: fn(char)) {
+    while !self.eof() && !is_word_terminator(self.cursor) {
+      callback(self.cursor);
+      self.bump()
+    }
+  }
+
+  fn parse_varname(&self) -> ~str {
+    match self.cursor {
+      '{' => io::with_str_writer(|w| self.braces(|b| w.write_char(b))),
+      _ => self.consume(|c| {
+        char::is_alphanumeric(c) || "-_".contains_char(c)
+      }),
+    }
+  }
+
+  fn parse_bareword(&self) -> @[Term] {
+    do at_vec::build |push| {
+      while !self.eof() && !is_word_terminator(self.cursor) {
+        match self.cursor {
+          '$' => {
+            push(self.parse_interp_dollar());
+          }
+          _ => {
+            let s = self.consume_escaped(|s| {
+              s != '$' && !is_word_terminator(s)
+            });
+            push(String(s));
+          }
+        }
+      }
+    }
+  }
+
+  fn parse_interp_dollar(&self) -> Term {
+    self.bump(); // skip the dollar
+
+    match self.cursor {
+      // $(subst command)
+      '(' => self.parse_subst(),
+      // ${var} and $var
+      _ => Variable(self.parse_varname())
+    }
+  }
+
+  // TODO
+  fn parse_interp_string(&self) -> @[Term] {
+    if self.cursor != '{' { return self.parse_bareword(); }
+    self.bump(); // consume initial open brace
+    if self.eof() { self.error("unterminated braces"); }
+
+    let mut brace_count = 1u;
+
+    // TODO: dedup this code with self.braces()
+    do at_vec::build |push| {
+      loop {
+        if brace_count == 0u { break; }
+        match self.cursor {
+          '$' => {
+            push(self.parse_interp_dollar())
+          }
+          _ => {
+            // scan the next string segment
+            let string_component = do io::with_str_writer |out| {
+              loop {
+                if self.eof() { self.error("unterminated braces"); }
+                match self.cursor {
+                  '{' => { 
+                    brace_count += 1u;
+                    out.write_char('{');
+                  }
+                  '}' => {
+                    brace_count -= 1u;
+                    if brace_count == 0u { break; }
+                    else { out.write_char('}'); }
+                  }
+                  '$' => { break; }
+                  _ => { out.write_char(self.cursor); }
+                }
+
+                self.bump();
+              }
+            };
+
+            if string_component != ~"" { push(String(string_component)); }
+          }
+        }
+      }
     }
   }
 
@@ -188,15 +302,13 @@ impl Scanner {
     match self.cursor {
       '$' => {
         self.bump();
-        Variable(self.parse_string())
+        Variable(self.parse_varname())
       }
-      '[' => {
-        self.parse_block()
-      }
-      '(' => {
-        self.parse_subst()
-      }
-      _ => { String(self.parse_string()) }
+      '[' => { self.parse_block() }
+      '(' => { self.parse_subst() }
+      '\'' => { self.bump(); String(self.parse_string()) }
+      '"' => { self.bump(); Interp(self.parse_interp_string()) }
+      _ => { Interp(self.parse_bareword()) }
     }
   }
 
@@ -299,7 +411,7 @@ fn test_strings() {
 
 #[test]
 fn test_terms() {
-  do with_scanner(~"$foo bar $") |scanner| {
+  do with_scanner(~"$foo 'bar $") |scanner| {
     let result1 = scanner.parse_term();
     assert(match result1 {
       Variable(x) => { x == ~"foo" }
@@ -332,46 +444,34 @@ fn test_dots() {
   }
 }
 
+macro_rules! matches (
+  ($e:expr, $p:pat => $cond:expr) => (
+    match $e { $p => $cond, _ => false }
+  );
+  ($e:expr, $p:pat) => (matches!($e, $p => true));
+)
+
 #[test]
 fn test_command() {
   let c1 = with_scanner(~"foo -a", |s| s.parse_command());
   assert(match c1.target { None => true, _ => false });
   assert(c1.components.len() == 2);
-  assert(match *c1.components[0] {
-    Argument(String(ref x)) => *x == ~"foo",
-    _ => false
-  });
+  assert(matches!(*c1.components[0], Argument(Interp([String(~"foo")]))));
+  assert(matches!(*c1.components[1], Flag(~"a")));
 
-  assert(match *c1.components[1] { Flag(ref x) => *x == ~"a", _ => false });
-
-  let c2 = with_scanner(~"@foo bar --why 1 $baz", |s| s.parse_command());
-  assert(match c2.target { Some(String(ref x)) => *x == ~"foo", _ => false });
+  let c2 = with_scanner(~"@'foo 'bar --why '1 $baz", |s| s.parse_command());
+  assert(matches!(c2.target, Some(String(~"foo"))));
   assert(c2.components.len() == 4);
-  assert(match *c2.components[0] {
-    Argument(String(ref x)) => *x == ~"bar",
-    _ => false
-  });
-  assert(match *c2.components[1] {
-    Flag(ref x) => *x == ~"why",
-    _ => false
-  });
-  assert(match *c2.components[2] {
-    Argument(String(ref x)) => *x == ~"1",
-    _ => false
-  });
-  assert(match *c2.components[3] {
-    Argument(Variable(ref x)) => *x == ~"baz",
-    _ => false
-  });
+  assert(matches!(*c2.components[0], Argument(String(~"bar"))));
+  assert(matches!(*c2.components[1], Flag(~"why")));
+  assert(matches!(*c2.components[2], Argument(String(~"1"))));
+  assert(matches!(*c2.components[3], Argument(Variable(~"baz"))));
 
-  let c3 = with_scanner(~"foo | bar", |s| s.parse_command());
+  let c3 = with_scanner(~"'foo | 'bar", |s| s.parse_command());
   match c3.pipe {
     Some(ref bar) => {
       assert(bar.components.len() == 1);
-      assert(match *bar.components[0] {
-        Argument(String(ref x)) => *x == ~"bar",
-        _ => false
-      });
+      assert(matches!(*bar.components[0], Argument(String(~"bar"))));
     }
     _ => { fail }
   }
@@ -384,13 +484,61 @@ fn test_block() {
     Block(ref commands) => {
       assert(commands.len() == 1);
       assert(commands[0].components.len() == 2);
-      assert(match *commands[0].components[0] {
-        Argument(Variable(ref x)) => *x == ~"", _ => false
-      });
-      assert(match *commands[0].components[1] {
-        Argument(Variable(ref x)) => *x == ~"", _ => false
-      });
+      assert(
+        matches!(*commands[0].components[0], Argument(Variable(~"")))
+      );
+      assert(
+        matches!(*commands[0].components[1], Argument(Variable(~"")))
+      );
     }
     _ => { fail; }
   }
+}
+
+#[test]
+fn test_interp() {
+  let i1 = with_scanner(~"foo/$.txt", |s| s.parse_term());
+  assert(matches!(i1,
+    Interp([String(~"foo/"), Variable(~""), String(~".txt")])
+  ));
+
+  let i2 = with_scanner(~"foo/$baz", |s| s.parse_term());
+  assert(matches!(i2,
+    Interp([String(~"foo/"), Variable(~"baz")])
+  ));
+
+  let i2 = with_scanner(~"\\$100", |s| s.parse_term());
+  assert(matches!(i2,
+    Interp([String(~"$100")])
+  ));
+
+  let i3 = with_scanner(~"foo/${}baz", |s| s.parse_term());
+  assert(matches!(i3,
+    Interp([String(~"foo/"), Variable(~""), String(~"baz")])
+  ));
+
+  let i4 = with_scanner(~"foo/$(baz zot)", |s| s.parse_term());
+  assert(matches!(i4,
+    Interp([String(~"foo/"), Subst([
+      @Command { target: None, pipe: None, components: [
+        @Argument(Interp([String(~"baz")])),
+        @Argument(Interp([String(~"zot")]))
+      ]}
+    ])])
+  ));
+
+  let i5 = with_scanner(~"\"{foo $bar baz}", |s| s.parse_term());
+  assert(matches!(i5,
+    Interp([String(~"foo "), Variable(~"bar"), String(~" baz")])
+  ));
+
+  let i6 = with_scanner(~"\"{foo {}$(baz zot)}", |s| s.parse_term());
+  assert(matches!(i6,
+    Interp([String(~"foo {}"), Subst([
+      @Command { target: None, pipe: None, components: [
+        @Argument(Interp([String(~"baz")])),
+        @Argument(Interp([String(~"zot")]))
+      ]}
+    ])])
+  ));
 }

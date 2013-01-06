@@ -19,7 +19,7 @@ $(BIN): $(CRATE) $(SRCS)
 
 $(TEST): $(CRATE) $(SRCS)
 	@mkdir -p $(dir $@)
-	$(RUST) --test $< -o $@ || ( touch $@ && exit 1 )
+	RUST_LOG=ixl $(RUST) --test $< -o $@ || ( touch $@ && exit 1 )
 	./$@
 
 .PHONY: clean
