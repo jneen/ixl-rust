@@ -156,7 +156,6 @@ impl Scanner {
 			return self.consume(|x| !is_word_terminator(x));
 		}
 		
-		// XXX may cause problems
 		let mut result = String::new();
 		self.braces(&mut result);
 		result
@@ -205,7 +204,6 @@ impl Scanner {
 	fn parse_varname(&mut self) -> String {
 		match self.curr_char() {
 			Some('{') => {
-				// XXX: may cause problems
 				let mut result = String::new();
 				self.braces(&mut result);
 				result
