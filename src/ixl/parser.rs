@@ -370,3 +370,165 @@ fn is_termspace(ch: char) -> bool {
 fn is_word_terminator(ch: char) -> bool {
 	is_termspace(ch) || "#])|".contains(ch)
 }
+
+/*
+
+fn with_scanner<T>(s: &str, yield: fn(Scanner) -> T) -> T {
+	io::with_str_reader(s, |r| yield(Scanner(r)))
+}
+
+#[test]
+fn test_scanner() {
+	do with_scanner("hello world") |scanner| {
+		let result = scanner.consume(char::is_alphanumeric);
+		assert(result) == ~"hello";
+	}
+}
+
+#[test]
+fn test_strings() {
+	do with_scanner(~"{he{ll}o}\n{a\\{b}") |scanner| {
+		let result1 = scanner.parse_string();
+		assert(result1 == ~"he{ll}o");
+
+		scanner.parse_termspaces();
+
+		let result2 = scanner.parse_string();
+		assert(result2 == ~"a{b");
+	}
+}
+
+#[test]
+fn test_terms() {
+	do with_scanner(~"$foo 'bar $") |scanner| {
+		let result1 = scanner.parse_term();
+		assert(match result1 {
+			Variable(x) => { x == ~"foo" }
+			_ => { false }
+		});
+
+		scanner.parse_termspaces();
+
+		let result2 = scanner.parse_term();
+		assert(match result2 {
+			String(x) => x == ~"bar", _ => false
+		});
+	}
+}
+
+#[test]
+fn test_dots() {
+	do with_scanner("$ $") |scanner| {
+		let result1 = scanner.parse_term();
+		assert(match result1 {
+			Variable(x) => x == ~"", _ => false
+		});
+
+		scanner.parse_termspaces();
+
+		let result2 = scanner.parse_term();
+		assert(match result2 {
+			Variable(x) => x == ~"", _ => false
+		});
+	}
+}
+
+macro_rules! matches (
+	($e:expr, $p:pat => $cond:expr) => (
+		match $e { $p => $cond, _ => false }
+	);
+	($e:expr, $p:pat) => (matches!($e, $p => true));
+)
+
+#[test]
+fn test_command() {
+	let c1 = with_scanner(~"foo -a", |s| s.parse_command());
+	assert(match c1.target { None => true, _ => false });
+	assert(c1.components.len() == 2);
+	assert(matches!(*c1.components[0], Argument(Interp([String(~"foo")]))));
+	assert(matches!(*c1.components[1], Flag(~"a")));
+
+	let c2 = with_scanner(~"@'foo 'bar --why '1 $baz", |s| s.parse_command());
+	assert(matches!(c2.target, Some(String(~"foo"))));
+	assert(c2.components.len() == 4);
+	assert(matches!(*c2.components[0], Argument(String(~"bar"))));
+	assert(matches!(*c2.components[1], Flag(~"why")));
+	assert(matches!(*c2.components[2], Argument(String(~"1"))));
+	assert(matches!(*c2.components[3], Argument(Variable(~"baz"))));
+
+	let c3 = with_scanner(~"'foo | 'bar", |s| s.parse_command());
+	match c3.pipe {
+		Some(ref bar) => {
+			assert(bar.components.len() == 1);
+			assert(matches!(*bar.components[0], Argument(String(~"bar"))));
+		}
+		_ => { fail }
+	}
+}
+
+#[test]
+fn test_block() {
+	let b1 = with_scanner(~"[$ $]", |s| s.parse_block());
+	match b1 {
+		Block(ref commands) => {
+			assert(commands.len() == 1);
+			assert(commands[0].components.len() == 2);
+			assert(
+				matches!(*commands[0].components[0], Argument(Variable(~"")))
+			);
+			assert(
+				matches!(*commands[0].components[1], Argument(Variable(~"")))
+			);
+		}
+		_ => { fail; }
+	}
+}
+
+#[test]
+fn test_interp() {
+	let i1 = with_scanner(~"foo/$.txt", |s| s.parse_term());
+	assert(matches!(i1,
+		Interp([String(~"foo/"), Variable(~""), String(~".txt")])
+	));
+
+	let i2 = with_scanner(~"foo/$baz", |s| s.parse_term());
+	assert(matches!(i2,
+		Interp([String(~"foo/"), Variable(~"baz")])
+	));
+
+	let i2 = with_scanner(~"\\$100", |s| s.parse_term());
+	assert(matches!(i2,
+		Interp([String(~"$100")])
+	));
+
+	let i3 = with_scanner(~"foo/${}baz", |s| s.parse_term());
+	assert(matches!(i3,
+		Interp([String(~"foo/"), Variable(~""), String(~"baz")])
+	));
+
+	let i4 = with_scanner(~"foo/$(baz zot)", |s| s.parse_term());
+	assert(matches!(i4,
+		Interp([String(~"foo/"), Subst([
+			@Command { target: None, pipe: None, components: [
+				@Argument(Interp([String(~"baz")])),
+				@Argument(Interp([String(~"zot")]))
+			]}
+		])])
+	));
+
+	let i5 = with_scanner(~"\"{foo $bar baz}", |s| s.parse_term());
+	assert(matches!(i5,
+		Interp([String(~"foo "), Variable(~"bar"), String(~" baz")])
+	));
+
+	let i6 = with_scanner(~"\"{foo {}$(baz zot)}", |s| s.parse_term());
+	assert(matches!(i6,
+		Interp([String(~"foo {}"), Subst([
+			@Command { target: None, pipe: None, components: [
+				@Argument(Interp([String(~"baz")])),
+				@Argument(Interp([String(~"zot")]))
+			]}
+		])])
+	));
+}
+*/
