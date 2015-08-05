@@ -365,9 +365,7 @@ fn is_word_terminator(ch: char) -> bool {
 	is_termspace(ch) || "#])|".contains(ch)
 }
 
-/*
-
-fn with_scanner<F: Fn(Scanner) -> T>(s: &str, lambda: F) -> T {
+fn with_scanner<T, F: Fn(Scanner) -> T>(s: &str, lambda: F) -> T {
 	lambda(Scanner::with_data(s.to_string()))
 }
 
@@ -529,4 +527,3 @@ fn test_interp() {
 		])
 	);
 }
-*/
