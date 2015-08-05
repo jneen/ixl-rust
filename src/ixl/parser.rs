@@ -48,7 +48,8 @@ impl Scanner {
 	
 	fn from_reader<T: Read>(reader: &mut T) -> Scanner {
 		let mut buf = String::new();
-		reader.read_to_string(&mut buf);
+		let result = reader.read_to_string(&mut buf);
+		if result.is_err() { panic!("File passed is not valid UTF-8."); }
 		Scanner::with_data(buf)
 	}
 	
