@@ -23,7 +23,7 @@ pub struct Command {
 	pipe: Option<Box<Command>>
 }
 
-pub struct Program(Vec<Command>)
+pub struct Program(Vec<Command>);
 
 /**
  * The Scanner
@@ -49,7 +49,7 @@ impl Scanner {
 	fn from_reader<T: Read>(reader: &mut T) -> Scanner {
 		let mut buf = String::new();
 		reader.read_to_string(&mut buf);
-		Scanner::with_data(buf);
+		Scanner::with_data(buf)
 	}
 	
 	fn with_data(data: String) -> Scanner {
@@ -87,7 +87,8 @@ impl Scanner {
 
 	fn consume<F: Fn(char) -> bool>(&mut self, pred: F) -> String {
 		let mut result = String::new();
-		while let Some(ch) = self.get_ch() && pred(ch) {
+		while let Some(ch) = self.get_ch() {
+			if !pred(ch) { break }
 			result.push(ch);
 			self.bump();
 		}
@@ -96,7 +97,8 @@ impl Scanner {
 
 	fn consume_escaped<F: Fn(char) -> bool>(&mut self, pred: F) -> String {
 		let mut result = String::new();
-		while let Some(ch) = self.get_ch() && pred(ch) {
+		while let Some(ch) = self.get_ch() {
+			if !pred(ch) { break }
 			if ch == '\\' {
 				self.bump();
 				if self.eof() { self.error("unterminated escape sequence") }
@@ -195,7 +197,8 @@ impl Scanner {
 	}
 
 	fn bareword<F: Fn(char)>(&mut self, callback: F) {
-		while let Some(ch) = self.get_ch() && !is_word_terminator(ch) {
+		while let Some(ch) = self.get_ch() {
+			if is_word_terminator(ch) { break }
 			callback(ch);
 			self.bump();
 		}
@@ -212,7 +215,8 @@ impl Scanner {
 
 	fn parse_bareword(&mut self) -> Vec<Term> {
 		let mut result: Vec<Term> = Vec::new();
-		while let Some(ch) = self.get_ch() && !is_word_terminator(ch) {
+		while let Some(ch) = self.get_ch() {
+			if is_word_terminator(ch) { break }
 			result.push(
 				if ch == '$' { self.parse_interp_dollar() }
 				else { Term::StringLiteral(self.consume_escaped(|s| s != '$' && !is_word_terminator(s))) }
@@ -308,7 +312,8 @@ impl Scanner {
 
 		// look for flags
 		let mut components: Vec<Component> = Vec::new();
-		while let Some(ch) = self.get_ch() && !is_word_terminator(ch) {
+		while let Some(ch) = self.get_ch() {
+			if is_word_terminator(ch) { break }
 			if ch == '-' {
 				self.bump();
 				if self.get_ch() == Some('-') { self.bump() }
