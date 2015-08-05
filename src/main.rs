@@ -1,5 +1,3 @@
-#[link(name="ixl")]
-
 mod ixl {
 	mod parser;
 }

@@ -1,7 +1,7 @@
 This is a prototype implementation of the ixl langage.
 
-To compile, you will need the `rustc` executable available.
+To compile, you will need `cargo`.
 
-To make `bin/ixl`, just run `make`.
+To make `target/ixl`, just run `cargo build`.
 
-To run the tests, run `make test`.
+To run the tests, run `cargo test`.
