@@ -49,7 +49,9 @@ impl Scanner {
 	fn from_reader<T: Read>(reader: &mut T) -> Scanner {
 		let mut buf = String::new();
 		let result = reader.read_to_string(&mut buf);
-		if result.is_err() { panic!("File passed is not valid UTF-8."); }
+		if result.is_err() {
+			panic!("File passed is not valid UTF-8.");
+		}
 		Scanner::with_data(buf)
 	}
 	
@@ -454,8 +456,8 @@ fn test_block() {
 
 #[test]
 fn test_interp() {
-	let i1 = with_scanner("foo/$.txt", |s| s.parse_term());
-	assert_eq!(i1,
+	let mut i = with_scanner("foo/$.txt", |s| s.parse_term());
+	assert_eq!(i,
 		Term::Interp(vec![
 			Term::StringLiteral("foo/".to_string()),
 			Term::Variable("".to_string()),
@@ -463,30 +465,30 @@ fn test_interp() {
 		])
 	);
 
-	let i2 = with_scanner("foo/$baz", |s| s.parse_term());
-	assert_eq!(i2,
+	i = with_scanner("foo/$baz", |s| s.parse_term());
+	assert_eq!(i,
 		Term::Interp(vec![
 			Term::StringLiteral("foo/".to_string()),
 			Term::Variable("baz".to_string())
 		])
 	);
 
-	let i2 = with_scanner("\\$100", |s| s.parse_term());
-	assert_eq!(i2,
+	i = with_scanner("\\$100", |s| s.parse_term());
+	assert_eq!(i,
 		Term::Interp(vec![Term::StringLiteral("$100".to_string())])
 	);
 
-	let i3 = with_scanner("foo/${}baz", |s| s.parse_term());
-	assert_eq!(i3,
+	i = with_scanner("foo/${}baz", |s| s.parse_term());
+	assert_eq!(i,
 		Term::Interp(vec![
-			Term::StringLiteral("foo/"),
-			Term::Variable(""),
-			Term::StringLiteral("baz")
+			Term::StringLiteral("foo/".to_string()),
+			Term::Variable("".to_string()),
+			Term::StringLiteral("baz".to_string())
 		])
 	);
 
-	let i4 = with_scanner("foo/$(baz zot)", |s| s.parse_term());
-	assert_eq!(i4,
+	i = with_scanner("foo/$(baz zot)", |s| s.parse_term());
+	assert_eq!(i,
 		Term::Interp(vec![
 			Term::StringLiteral("foo/".to_string()),
 			Term::Subst(vec![
@@ -502,8 +504,8 @@ fn test_interp() {
 		])
 	);
 
-	let i5 = with_scanner("\"{foo $bar baz}", |s| s.parse_term());
-	assert_eq!(i5,
+	i = with_scanner("\"{foo $bar baz}", |s| s.parse_term());
+	assert_eq!(i,
 		Term::Interp(vec![
 			Term::StringLiteral("foo ".to_string()),
 			Term::Variable("bar".to_string()),
@@ -511,8 +513,8 @@ fn test_interp() {
 		])
 	);
 
-	let i6 = with_scanner("\"{foo {}$(baz zot)}", |s| s.parse_term());
-	assert_eq!(i6,
+	i = with_scanner("\"{foo {}$(baz zot)}", |s| s.parse_term());
+	assert_eq!(i,
 		Term::Interp(vec![
 			Term::StringLiteral("foo {}".to_string()),
 			Term::Subst(vec![

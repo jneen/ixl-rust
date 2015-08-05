@@ -4,4 +4,4 @@ To compile, you will need the `rustc` executable available.
 
 To make `bin/ixl`, just run `make`.
 
-~~To run the tests, run `make test`.~~ Test will be implemented soon.
+To run the tests, run `make test`.
