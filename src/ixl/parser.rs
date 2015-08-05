@@ -7,7 +7,8 @@ pub enum Term {
 	Block(Vec<Command>),
 	Subst(Vec<Command>),
 	Variable(String),
-	String(String),
+	NumberLiteral(u32),
+	StringLiteral(String),
 	Interp(Vec<Term>)
 }
 
@@ -22,9 +23,7 @@ pub struct Command {
 	pipe: Option<Box<Command>>
 }
 
-pub struct Program {
-	commands: Vec<Command>
-}
+pub struct Program(Vec<Command>)
 
 /**
  * The Scanner
@@ -36,25 +35,32 @@ pub struct Scanner {
 	col: usize
 }
 
-pub fn Scanner<T: Read>(reader: &mut T) -> Scanner {
-	let mut buf = String::new();
-	reader.read_to_string(&mut buf);
-	
-	assert!(buf.len() != 0, "No data received.");
-	
-	Scanner {
-		data: buf.chars().collect(),
-		index: 0,
-		line: 0,
-		col: 0
-	}
-}
-
 impl Scanner {
 	
-	fn eof(&self) -> bool { self.curr_char().is_none() }
+	fn new() -> Scanner {
+		Scanner {
+			data: Vec::new(),
+			index: 0,
+			line: 0,
+			col: 0
+		}
+	}
 	
-	fn curr_char(&self) -> Option<char> {
+	fn from_reader<T: Read>(reader: &mut T) -> Scanner {
+		let mut buf = String::new();
+		reader.read_to_string(&mut buf);
+		Scanner::with_data(buf);
+	}
+	
+	fn with_data(data: String) -> Scanner {
+		let mut scanner = Scanner::new();
+		scanner.data = data.chars().collect();
+		scanner
+	}
+	
+	fn eof(&self) -> bool { self.get_ch().is_none() }
+	
+	fn get_ch(&self) -> Option<char> {
 		if self.index >= self.data.len() { None }
 		else { Some(self.data[self.index]) }
 	}
@@ -66,24 +72,23 @@ impl Scanner {
 
 	fn bump(&mut self) {
 		
-		match self.curr_char() {
-			Some('\n') => {
+		if let Some(ch) = self.get_ch() {
+			if ch == '\n' {
 				self.line += 1;
 				self.col = 0;
-			},
-			Some(_) => self.col += 1,
-			None => (),
+			}
+			else { self.col += 1; }
 		}
 		
 		self.index += 1;
 		
-		// println!("bump! cursor: [{}]", self.curr_char);
+		// println!("bump! cursor: [{}]", self.get_ch);
 	}
 
 	fn consume<F: Fn(char) -> bool>(&mut self, pred: F) -> String {
 		let mut result = String::new();
-		while !self.eof() && pred(self.curr_char().unwrap()) {
-			result.push(self.curr_char().unwrap());
+		while let Some(ch) = self.get_ch() && pred(ch) {
+			result.push(ch);
 			self.bump();
 		}
 		result
@@ -91,13 +96,13 @@ impl Scanner {
 
 	fn consume_escaped<F: Fn(char) -> bool>(&mut self, pred: F) -> String {
 		let mut result = String::new();
-		while !self.eof() && pred(self.curr_char().unwrap()) {
-			if self.curr_char() == Some('\\') {
+		while let Some(ch) = self.get_ch() && pred(ch) {
+			if ch == '\\' {
 				self.bump();
-				if self.eof() { self.error("unterminated escape sequence"); }
+				if self.eof() { self.error("unterminated escape sequence") }
 			}
 
-			result.push(self.curr_char().unwrap());
+			result.push(ch);
 			self.bump();
 		}
 		result
@@ -110,7 +115,7 @@ impl Scanner {
 	fn parse_spaces(&mut self) {
 		self.consume(is_space);
 
-		while self.curr_char() == Some('\\') && self.peek() == Some('\n') {
+		while self.get_ch() == Some('\\') && self.peek() == Some('\n') {
 			self.bump();
 			self.bump();
 			self.consume(is_space);
@@ -118,13 +123,13 @@ impl Scanner {
 	}
 	
 	fn parse_block(&mut self) -> Term {
-		if self.curr_char() != Some('[') { self.error("expected a block"); }
+		if self.get_ch() != Some('[') { self.error("expected a block"); }
 		self.bump();
 		Term::Block(self.parse_commands_until(']'))
 	}
 	
 	fn parse_subst(&mut self) -> Term {
-		if self.curr_char() != Some('(') { self.error("expected a block"); }
+		if self.get_ch() != Some('(') { self.error("expected a block"); }
 		self.bump();
 		Term::Subst(self.parse_commands_until(')'))
 	}
@@ -133,7 +138,7 @@ impl Scanner {
 		let mut result: Vec<Command> = Vec::new();
 		while !self.eof() {
 			self.parse_termspaces();
-			if self.curr_char() == Some(end) {
+			if self.get_ch() == Some(end) {
 				self.bump();
 				break;
 			}
@@ -145,14 +150,14 @@ impl Scanner {
 	fn parse_termspaces(&mut self) {
 		self.consume(is_termspace);
 
-		while self.curr_char() == Some('#') {
+		while self.get_ch() == Some('#') {
 			self.consume(|x| x != '\n');
 			self.consume(is_termspace);
 		}
 	}
 
 	fn parse_string(&mut self) -> String {
-		if self.curr_char() != Some('{') {
+		if self.get_ch() != Some('{') {
 			return self.consume(|x| !is_word_terminator(x));
 		}
 		
@@ -162,187 +167,173 @@ impl Scanner {
 	}
 
 	fn braces(&mut self, out: &mut String) {
-		self.bump(); // consume initial open brace
-		if self.eof() { self.error("unterminated braces"); }
-
 		let mut brace_count: usize = 1;
 
 		loop {
-			match self.curr_char().unwrap() {
-				'{' => {
+			self.bump();
+			match self.get_ch() {
+				Some('{') => {
 					out.push('{');
 					brace_count += 1;
 				},
-				'}' => {
+				Some('}') => {
 					brace_count -= 1;
 					if brace_count == 0 { break; }
 					out.push('}');
 				},
-				'\\' => {
+				Some('\\') => {
 					if self.eof() { self.error("unterminated braces"); }
 					self.bump();
 					out.push('\\');
 				},
-				c @ _ => out.push(c)
+				Some(c) => out.push(c),
+				None => self.error("unterminated braces")
 			}
-
-			self.bump();
-			if self.eof() { self.error("unterminated braces"); }
 		}
 
-		if self.eof() { self.error("unterminated braces"); }
 		self.bump();
 	}
 
 	fn bareword<F: Fn(char)>(&mut self, callback: F) {
-		while !self.eof() && !is_word_terminator(self.curr_char().unwrap()) {
-			callback(self.curr_char().unwrap());
-			self.bump()
+		while let Some(ch) = self.get_ch() && !is_word_terminator(ch) {
+			callback(ch);
+			self.bump();
 		}
 	}
 
 	fn parse_varname(&mut self) -> String {
-		match self.curr_char() {
-			Some('{') => {
-				let mut result = String::new();
-				self.braces(&mut result);
-				result
-			},
-			_ => self.consume(|c| char::is_alphanumeric(c) || "-_".contains(c))
+		if self.get_ch() == Some('{') {
+			let mut result = String::new();
+			self.braces(&mut result);
+			result
 		}
+		else { self.consume(|c| char::is_alphanumeric(c) || "-_".contains(c)) }
 	}
 
 	fn parse_bareword(&mut self) -> Vec<Term> {
 		let mut result: Vec<Term> = Vec::new();
-		while !self.eof() && !is_word_terminator(self.curr_char().unwrap()) {
-			result.push(match self.curr_char().unwrap() {
-				'$' => self.parse_interp_dollar(),
-				_ => Term::String(self.consume_escaped(|s| s != '$' && !is_word_terminator(s)))
-			})
+		while let Some(ch) = self.get_ch() && !is_word_terminator(ch) {
+			result.push(
+				if ch == '$' { self.parse_interp_dollar() }
+				else { Term::StringLiteral(self.consume_escaped(|s| s != '$' && !is_word_terminator(s))) }
+			);
 		}
 		result
 	}
 
 	fn parse_interp_dollar(&mut self) -> Term {
 		self.bump(); // skip the dollar
-
-		match self.curr_char() {
-			// $(subst command)
-			Some('(') => self.parse_subst(),
-			// ${var} and $var
-			_ => Term::Variable(self.parse_varname())
-		}
+		
+		// $(subst command)
+		if self.get_ch() == Some('(') { self.parse_subst() }
+		// ${var} and $var
+		else { Term::Variable(self.parse_varname()) }
 	}
 
 	// TODO
 	fn parse_interp_string(&mut self) -> Vec<Term> {
-		if self.curr_char() != Some('{') { return self.parse_bareword(); }
+		if self.get_ch() != Some('{') { return self.parse_bareword(); }
 		self.bump(); // consume initial open brace
-		if self.eof() { self.error("unterminated braces"); }
 
 		let mut brace_count: usize = 1;
 
 		// TODO: dedup this code with self.braces()
 		let mut result: Vec<Term> = Vec::new();
-		loop {
-			if brace_count == 0 { break; }
-			match self.curr_char().unwrap() {
-				'$' => result.push(self.parse_interp_dollar()),
-				_ => {
+		while brace_count != 0 {
+			match self.get_ch() {
+				Some('$') => result.push(self.parse_interp_dollar()),
+				Some(_) => {
 					// scan the next string segment
 					let mut string_component = String::new();
 					
 					loop {
-						if self.eof() { self.error("unterminated braces"); }
-						match self.curr_char().unwrap() {
-							'{' => { 
+						self.bump();
+						match self.get_ch() {
+							Some('{') => {
 								brace_count += 1;
 								string_component.push('{');
 							},
-							'}' => {
+							Some('}') => {
 								brace_count -= 1;
-								if brace_count == 0 { break; }
+								if brace_count == 0 { break }
 								string_component.push('}');
 							},
-							'$' => { break; },
-							c @ _ => string_component.push(c)
+							Some('$') => break,
+							Some(c) => string_component.push(c),
+							None => self.error("unterminated braces")
 						}
-						self.bump();
 					}
-
+	
 					if &string_component != "" {
-						result.push(Term::String(string_component));
+						result.push(Term::StringLiteral(string_component));
 					}
-				}
+				},
+				None => self.error("unterminated braces")
 			}
 		}
 		result
 	}
 
 	fn parse_term(&mut self) -> Term {
-		match self.curr_char().unwrap() {
-			'$' => {
+		match self.get_ch() {
+			Some('$') => {
 				self.bump();
 				Term::Variable(self.parse_varname())
 			},
-			'[' => self.parse_block(),
-			'(' => self.parse_subst(),
-			'\'' => {
+			Some('[') => self.parse_block(),
+			Some('(') => self.parse_subst(),
+			Some('\'') => {
 				self.bump();
-				Term::String(self.parse_string())
+				Term::StringLiteral(self.parse_string())
 			},
-			'"' => {
+			Some('"') => {
 				self.bump();
 				Term::Interp(self.parse_interp_string())
 			},
-			_ => Term::Interp(self.parse_bareword())
+			Some(_) => Term::Interp(self.parse_bareword()),
+			None => self.error("expected term, got eof")
 		}
 	}
 
 	fn parse_command(&mut self) -> Command {
-		let target = if self.curr_char() == Some('@') {
+		let target = if self.get_ch() == Some('@') {
 			self.bump();
-			// possible eof not handled here?
 			Some(self.parse_term())
 		}
 		else { None };
 
-		if self.eof() { self.error("expected command, got eof"); }
+		if self.eof() { self.error("expected command, got eof") }
 
 		self.parse_spaces();
 
 		// look for flags
 		let mut components: Vec<Component> = Vec::new();
-		while !self.eof() {
-			if is_word_terminator(self.curr_char().unwrap()) { break; }
-
-			match self.curr_char().unwrap() {
-				'-' => {
-					self.bump();
-					if self.curr_char() == Some('-') { self.bump(); }
-					components.push(Component::Flag(self.parse_string()));
-				},
-				_ => components.push(Component::Argument(self.parse_term()))
+		while let Some(ch) = self.get_ch() && !is_word_terminator(ch) {
+			if ch == '-' {
+				self.bump();
+				if self.get_ch() == Some('-') { self.bump() }
+				components.push(Component::Flag(self.parse_string()));
 			}
-
+			else { components.push(Component::Argument(self.parse_term())) }
+			
 			self.parse_spaces();
 		}
 
 		// pipes can be after comments or newlines,
 		// but not semicolons.
-		if self.curr_char() != Some(';') { self.parse_termspaces() }
-
-		let pipe = if self.curr_char() == Some('|') { 
-			self.bump();
-			self.parse_spaces();
-			Some(Box::new(self.parse_command()))
-		}
-		else { None };
+		if self.get_ch() != Some(';') { self.parse_termspaces() }
 
 		Command {
 			target: target,
+			
 			components: components,
-			pipe: pipe,
+			
+			pipe: if self.get_ch() == Some('|') { 
+				self.bump();
+				self.parse_spaces();
+				Some(Box::new(self.parse_command()))
+			}
+			else { None }
 		}
 	}
 
@@ -353,7 +344,7 @@ impl Scanner {
 			commands.push(self.parse_command());
 		}
 		
-		Program { commands: commands }
+		Program(commands)
 	}
 }
 
@@ -371,162 +362,166 @@ fn is_word_terminator(ch: char) -> bool {
 
 /*
 
-fn with_scanner<T>(s: &str, yield: fn(Scanner) -> T) -> T {
-	io::with_str_reader(s, |r| yield(Scanner(r)))
+fn with_scanner<F: Fn(Scanner) -> T>(s: &str, lambda: F) -> T {
+	lambda(Scanner::with_data(s.to_string()))
 }
 
 #[test]
 fn test_scanner() {
-	do with_scanner("hello world") |scanner| {
+	with_scanner("hello world", |scanner| {
 		let result = scanner.consume(char::is_alphanumeric);
-		assert(result) == ~"hello";
-	}
+		assert!(result == "hello");
+	})
 }
 
 #[test]
 fn test_strings() {
-	do with_scanner(~"{he{ll}o}\n{a\\{b}") |scanner| {
-		let result1 = scanner.parse_string();
-		assert(result1 == ~"he{ll}o");
+	with_scanner("{he{ll}o}\n{a\\{b}", |scanner| {
+		let mut result = scanner.parse_string();
+		assert!(result == "he{ll}o");
 
 		scanner.parse_termspaces();
 
-		let result2 = scanner.parse_string();
-		assert(result2 == ~"a{b");
-	}
+		result = scanner.parse_string();
+		assert!(result == "a{b");
+	})
 }
 
 #[test]
 fn test_terms() {
-	do with_scanner(~"$foo 'bar $") |scanner| {
-		let result1 = scanner.parse_term();
-		assert(match result1 {
-			Variable(x) => { x == ~"foo" }
-			_ => { false }
-		});
+	with_scanner("$foo 'bar $", |scanner| {
+		let mut result = scanner.parse_term();
+		assert!(if let Term::Variable(x) = result { x == "foo" } else { false });
 
 		scanner.parse_termspaces();
 
-		let result2 = scanner.parse_term();
-		assert(match result2 {
-			String(x) => x == ~"bar", _ => false
-		});
-	}
+		result = scanner.parse_term();
+		assert!(if let Term::StringLiteral(x) = result { x == "bar" } else { false });
+	})
 }
 
 #[test]
 fn test_dots() {
-	do with_scanner("$ $") |scanner| {
-		let result1 = scanner.parse_term();
-		assert(match result1 {
-			Variable(x) => x == ~"", _ => false
-		});
+	with_scanner("$ $", |scanner| {
+		let mut result = scanner.parse_term();
+		assert!(if let Term::Variable(x) = result { x.is_empty() } else { false });
 
 		scanner.parse_termspaces();
 
-		let result2 = scanner.parse_term();
-		assert(match result2 {
-			Variable(x) => x == ~"", _ => false
-		});
-	}
+		result = scanner.parse_term();
+		assert!(if let Term::Variable(x) = result { x.is_empty() } else { false });
+	})
 }
-
-macro_rules! matches (
-	($e:expr, $p:pat => $cond:expr) => (
-		match $e { $p => $cond, _ => false }
-	);
-	($e:expr, $p:pat) => (matches!($e, $p => true));
-)
 
 #[test]
 fn test_command() {
-	let c1 = with_scanner(~"foo -a", |s| s.parse_command());
-	assert(match c1.target { None => true, _ => false });
-	assert(c1.components.len() == 2);
-	assert(matches!(*c1.components[0], Argument(Interp([String(~"foo")]))));
-	assert(matches!(*c1.components[1], Flag(~"a")));
+	let c1 = with_scanner("foo -a", |s| s.parse_command());
+	assert!(c1.target.is_none());
+	assert!(c1.components.len() == 2);
+	assert_eq!(c1.components[0], Component::Argument(Term::Interp(vec![Term::StringLiteral("foo".to_string())])));
+	assert_eq!(c1.components[1], Component::Flag("a".to_string()));
 
-	let c2 = with_scanner(~"@'foo 'bar --why '1 $baz", |s| s.parse_command());
-	assert(matches!(c2.target, Some(String(~"foo"))));
-	assert(c2.components.len() == 4);
-	assert(matches!(*c2.components[0], Argument(String(~"bar"))));
-	assert(matches!(*c2.components[1], Flag(~"why")));
-	assert(matches!(*c2.components[2], Argument(String(~"1"))));
-	assert(matches!(*c2.components[3], Argument(Variable(~"baz"))));
+	let c2 = with_scanner("@'foo 'bar --why '1 $baz", |s| s.parse_command());
+	assert_eq!(c2.target, Some(Term::StringLiteral("foo".to_string())));
+	assert!(c2.components.len() == 4);
+	assert_eq!(c2.components[0], Component::Argument(Term::StringLiteral("bar".to_string())));
+	assert_eq!(c2.components[1], Component::Flag("why".to_string()));
+	assert_eq!(c2.components[2], Component::Argument(Term::StringLiteral("1".to_string())));
+	assert_eq!(c2.components[3], Component::Argument(Term::Variable("baz".to_string())));
 
-	let c3 = with_scanner(~"'foo | 'bar", |s| s.parse_command());
-	match c3.pipe {
-		Some(ref bar) => {
-			assert(bar.components.len() == 1);
-			assert(matches!(*bar.components[0], Argument(String(~"bar"))));
-		}
-		_ => { fail }
+	let c3 = with_scanner("'foo | 'bar", |s| s.parse_command());
+	if let Some(ref bar) = c3.pipe {
+		assert!(bar.components.len() == 1);
+		assert_eq!(bar.components[0], Component::Argument(Term::StringLiteral("bar".to_string())));
 	}
+	else { panic!() }
 }
 
 #[test]
 fn test_block() {
-	let b1 = with_scanner(~"[$ $]", |s| s.parse_block());
-	match b1 {
-		Block(ref commands) => {
-			assert(commands.len() == 1);
-			assert(commands[0].components.len() == 2);
-			assert(
-				matches!(*commands[0].components[0], Argument(Variable(~"")))
-			);
-			assert(
-				matches!(*commands[0].components[1], Argument(Variable(~"")))
-			);
-		}
-		_ => { fail; }
+	if let Term::Block(ref commands) = with_scanner("[$ $]", |s| s.parse_block()) {
+		assert!(commands.len() == 1);
+		assert!(commands[0].components.len() == 2);
+		assert_eq!(commands[0].components[0], Component::Argument(Term::Variable("".to_string())));
+		assert_eq!(commands[0].components[1], Component::Argument(Term::Variable("".to_string())));
 	}
+	else { panic!() }
 }
 
 #[test]
 fn test_interp() {
-	let i1 = with_scanner(~"foo/$.txt", |s| s.parse_term());
-	assert(matches!(i1,
-		Interp([String(~"foo/"), Variable(~""), String(~".txt")])
-	));
+	let i1 = with_scanner("foo/$.txt", |s| s.parse_term());
+	assert_eq!(i1,
+		Term::Interp(vec![
+			Term::StringLiteral("foo/".to_string()),
+			Term::Variable("".to_string()),
+			Term::StringLiteral(".txt".to_string())
+		])
+	);
 
-	let i2 = with_scanner(~"foo/$baz", |s| s.parse_term());
-	assert(matches!(i2,
-		Interp([String(~"foo/"), Variable(~"baz")])
-	));
+	let i2 = with_scanner("foo/$baz", |s| s.parse_term());
+	assert_eq!(i2,
+		Term::Interp(vec![
+			Term::StringLiteral("foo/".to_string()),
+			Term::Variable("baz".to_string())
+		])
+	);
 
-	let i2 = with_scanner(~"\\$100", |s| s.parse_term());
-	assert(matches!(i2,
-		Interp([String(~"$100")])
-	));
+	let i2 = with_scanner("\\$100", |s| s.parse_term());
+	assert_eq!(i2,
+		Term::Interp(vec![Term::StringLiteral("$100".to_string())])
+	);
 
-	let i3 = with_scanner(~"foo/${}baz", |s| s.parse_term());
-	assert(matches!(i3,
-		Interp([String(~"foo/"), Variable(~""), String(~"baz")])
-	));
+	let i3 = with_scanner("foo/${}baz", |s| s.parse_term());
+	assert_eq!(i3,
+		Term::Interp(vec![
+			Term::StringLiteral("foo/"),
+			Term::Variable(""),
+			Term::StringLiteral("baz")
+		])
+	);
 
-	let i4 = with_scanner(~"foo/$(baz zot)", |s| s.parse_term());
-	assert(matches!(i4,
-		Interp([String(~"foo/"), Subst([
-			@Command { target: None, pipe: None, components: [
-				@Argument(Interp([String(~"baz")])),
-				@Argument(Interp([String(~"zot")]))
-			]}
-		])])
-	));
+	let i4 = with_scanner("foo/$(baz zot)", |s| s.parse_term());
+	assert_eq!(i4,
+		Term::Interp(vec![
+			Term::StringLiteral("foo/".to_string()),
+			Term::Subst(vec![
+				Command {
+					target: None,
+					pipe: None,
+					components: vec![
+						Component::Argument(Term::Interp(vec![Term::StringLiteral("baz".to_string())])),
+						Component::Argument(Term::Interp(vec![Term::StringLiteral("zot".to_string())]))
+					]
+				}
+			])
+		])
+	);
 
-	let i5 = with_scanner(~"\"{foo $bar baz}", |s| s.parse_term());
-	assert(matches!(i5,
-		Interp([String(~"foo "), Variable(~"bar"), String(~" baz")])
-	));
+	let i5 = with_scanner("\"{foo $bar baz}", |s| s.parse_term());
+	assert_eq!(i5,
+		Term::Interp(vec![
+			Term::StringLiteral("foo ".to_string()),
+			Term::Variable("bar".to_string()),
+			Term::StringLiteral(" baz".to_string())
+		])
+	);
 
-	let i6 = with_scanner(~"\"{foo {}$(baz zot)}", |s| s.parse_term());
-	assert(matches!(i6,
-		Interp([String(~"foo {}"), Subst([
-			@Command { target: None, pipe: None, components: [
-				@Argument(Interp([String(~"baz")])),
-				@Argument(Interp([String(~"zot")]))
-			]}
-		])])
-	));
+	let i6 = with_scanner("\"{foo {}$(baz zot)}", |s| s.parse_term());
+	assert_eq!(i6,
+		Term::Interp(vec![
+			Term::StringLiteral("foo {}".to_string()),
+			Term::Subst(vec![
+				Command {
+					target: None,
+					pipe: None,
+					components: [
+						Component::Argument(Term::Interp(vec![Term::StringLiteral("baz".to_string())])),
+						Component::Argument(Term::Interp(vec![Term::StringLiteral("zot".to_string())]))
+					]
+				}
+			])
+		])
+	);
 }
 */
