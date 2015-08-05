@@ -434,7 +434,7 @@ fn test_command() {
 	assert_eq!(c2.components[3], Component::Argument(Term::Variable("baz".to_string())));
 
 	let c3 = with_scanner("'foo | 'bar", |s| s.parse_command());
-	if let Some(ref bar) = c3.pipe {
+	if let Some(bar) = c3.pipe {
 		assert!(bar.components.len() == 1);
 		assert_eq!(bar.components[0], Component::Argument(Term::StringLiteral("bar".to_string())));
 	}
@@ -443,7 +443,7 @@ fn test_command() {
 
 #[test]
 fn test_block() {
-	if let Term::Block(ref commands) = with_scanner("[$ $]", |s| s.parse_block()) {
+	if let Term::Block(commands) = with_scanner("[$ $]", |s| s.parse_block()) {
 		assert!(commands.len() == 1);
 		assert!(commands[0].components.len() == 2);
 		assert_eq!(commands[0].components[0], Component::Argument(Term::Variable("".to_string())));
