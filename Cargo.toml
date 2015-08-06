@@ -1,4 +1,7 @@
 [package]
-name = "ixl-rust"
+name = "rxl"
 version = "0.0.2"
-authors = ["Jeanine Adkisson <jneen@jneen.net>"]
+authors = [
+    "1011X <1011XXXXX@gmail.com>",
+    "Jeanine Adkisson <jneen@jneen.net>"
+]
