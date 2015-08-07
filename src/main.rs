@@ -1,7 +1,13 @@
-mod ixl {
-	mod parser;
-}
+use std::fs::File;
+use std::env;
+use parser::Scanner;
+
+mod parser;
 
 fn main() {
-	println!("hello, world");
+	let args: Vec<String> = env::args().collect();
+	let file_path = &args[1];
+	let mut file = File::open(file_path).unwrap();
+	
+	Scanner::from_reader(&mut file);
 }

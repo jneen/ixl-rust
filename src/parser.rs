@@ -3,6 +3,7 @@ use std::io::Read;
 /**
  * The AST
  */
+#[derive(Debug, PartialEq)]
 pub enum Term {
 	Block(Vec<Command>),
 	Subst(Vec<Command>),
@@ -12,17 +13,20 @@ pub enum Term {
 	Interp(Vec<Term>)
 }
 
+#[derive(Debug, PartialEq)]
 pub enum Component {
 	Flag(String),
 	Argument(Term)
 }
 
+#[derive(Debug, PartialEq)]
 pub struct Command {
 	target: Option<Term>,
 	components: Vec<Component>,
 	pipe: Option<Box<Command>>
 }
 
+#[derive(Debug)]
 pub struct Program(Vec<Command>);
 
 /**
@@ -46,7 +50,7 @@ impl Scanner {
 		}
 	}
 	
-	fn from_reader<T: Read>(reader: &mut T) -> Scanner {
+	pub fn from_reader<T: Read>(reader: &mut T) -> Scanner {
 		let mut buf = String::new();
 		let result = reader.read_to_string(&mut buf);
 		if result.is_err() {
@@ -101,13 +105,14 @@ impl Scanner {
 	fn consume_escaped<F: Fn(char) -> bool>(&mut self, pred: F) -> String {
 		let mut result = String::new();
 		while let Some(ch) = self.get_ch() {
+			// TODO: \uXXXX sequences etc.
 			if !pred(ch) { break }
 			if ch == '\\' {
 				self.bump();
 				if self.eof() { self.error("unterminated escape sequence") }
 			}
 
-			result.push(ch);
+			result.push(self.get_ch().unwrap());
 			self.bump();
 		}
 		result
@@ -172,10 +177,10 @@ impl Scanner {
 	}
 
 	fn braces(&mut self, out: &mut String) {
+		self.bump(); // consume initial open brace
 		let mut brace_count: usize = 1;
 
 		loop {
-			self.bump();
 			match self.get_ch() {
 				Some('{') => {
 					out.push('{');
@@ -187,13 +192,14 @@ impl Scanner {
 					out.push('}');
 				},
 				Some('\\') => {
-					if self.eof() { self.error("unterminated braces"); }
 					self.bump();
-					out.push('\\');
+					if let Some(ch) = self.get_ch() { out.push(ch); }
+					else { self.error("unterminated braces"); }
 				},
 				Some(c) => out.push(c),
 				None => self.error("unterminated braces")
 			}
+			self.bump();
 		}
 
 		self.bump();
@@ -254,7 +260,6 @@ impl Scanner {
 					let mut string_component = String::new();
 					
 					loop {
-						self.bump();
 						match self.get_ch() {
 							Some('{') => {
 								brace_count += 1;
@@ -269,9 +274,10 @@ impl Scanner {
 							Some(c) => string_component.push(c),
 							None => self.error("unterminated braces")
 						}
+						self.bump();
 					}
 	
-					if &string_component != "" {
+					if string_component != "" {
 						result.push(Term::StringLiteral(string_component));
 					}
 				},
@@ -368,8 +374,8 @@ fn is_word_terminator(ch: char) -> bool {
 	is_termspace(ch) || "#])|".contains(ch)
 }
 
-fn with_scanner<T, F: Fn(Scanner) -> T>(s: &str, lambda: F) -> T {
-	lambda(Scanner::with_data(s.to_string()))
+fn with_scanner<T, F: FnOnce(&mut Scanner) -> T>(s: &str, lambda: F) -> T {
+	lambda(&mut Scanner::with_data(s.to_string()))
 }
 
 #[test]
@@ -389,7 +395,7 @@ fn test_strings() {
 		scanner.parse_termspaces();
 
 		result = scanner.parse_string();
-		assert!(result == "a{b");
+		assert_eq!(result, "a{b");
 	})
 }
 
@@ -521,7 +527,7 @@ fn test_interp() {
 				Command {
 					target: None,
 					pipe: None,
-					components: [
+					components: vec![
 						Component::Argument(Term::Interp(vec![Term::StringLiteral("baz".to_string())])),
 						Component::Argument(Term::Interp(vec![Term::StringLiteral("zot".to_string())]))
 					]
