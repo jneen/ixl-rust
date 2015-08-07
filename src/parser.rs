@@ -351,7 +351,7 @@ impl Scanner {
 		}
 	}
 
-	fn parse(&mut self) -> Program {
+	pub fn parse(&mut self) -> Program {
 		let mut commands: Vec<Command> = Vec::new();
 		while !self.eof() {
 			self.parse_termspaces();
@@ -390,7 +390,7 @@ fn test_scanner() {
 fn test_strings() {
 	with_scanner("{he{ll}o}\n{a\\{b}", |scanner| {
 		let mut result = scanner.parse_string();
-		assert!(result == "he{ll}o");
+		assert_eq!(result, "he{ll}o");
 
 		scanner.parse_termspaces();
 

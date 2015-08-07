@@ -9,5 +9,7 @@ fn main() {
 	let file_path = &args[1];
 	let mut file = File::open(file_path).unwrap();
 	
-	Scanner::from_reader(&mut file);
+	let mut scanner = Scanner::from_reader(&mut file);
+	let program = scanner.parse();
+	println!("{:#?}", program);
 }
