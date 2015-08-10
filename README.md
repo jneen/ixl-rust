@@ -1,4 +1,4 @@
-This is a derived prototype implementation of @jneen's ixl langage.
+This is an implementation of the ixl language in Rust.
 
 To compile, you will need `cargo`.
 
