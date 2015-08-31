@@ -1,6 +1,7 @@
-This is a prototype implementation of the ixl langage.
+This is an implementation of the ixl language in Rust.
 
-To compile, you will need the `rustc` executable available.
+To compile, you will need `cargo`.
 
-To make `bin/ixl`, just run `make`.
-To run the tests, run `make test`.
+To make `target/rxl`, just run `cargo build`.
+
+To run the tests, run `cargo test`.

@@ -1,5 +1,1 @@
-# rust artifacts
-/.cargo
-
-# build artifacts
-/bin
+/target
